@@ -1,0 +1,226 @@
+{
+ "pid": "3057",
+ "code": "S6-SOPR-003",
+ "title": "会员空间平台 · SOP 步骤级超时率与耗时分位数统计",
+ "engine_rel": "pkg/engine.py",
+ "render_rel": "pkg/render.py",
+ "extras": "extras",
+ "csv": "runs_expected.csv",
+ "coverage_csv": "coverage.csv",
+ "md": "runs.md",
+ "id_col": "run_no",
+ "cols": [
+  "run_no",
+  "step_key",
+  "started_at",
+  "finished_at",
+  "due_at",
+  "pause_minutes",
+  "expected_net_minutes",
+  "expected_overdue",
+  "expected_anomaly",
+  "note"
+ ],
+ "scale": "14 条构造执行记录 / 3 条暂停记录 / 1 个物化视图（13 列）/ 1 个刷新函数 / 2 个 Alembic 迁移 / 15 个 pytest 用例 / 7 类覆盖 / 33 项 AC 断言",
+ "intro": "本包为「SOP 步骤级超时率与耗时分位数统计」交付物：物化视图 mv_sop_step_sla（13 列，按 org/site/template/version/step/month 分组，含 step_runs / overdue_runs / overdue_rate / p50 / p90 / max / anomaly_count）、参数化刷新函数 refresh_mv_sop_step_sla(as_of)（先 upsert 单行参数表再 REFRESH，支持回溯）、两份 Alembic 迁移（可 upgrade 可 downgrade）、11 条虚构构造执行记录与手算对照表、15 个 pytest 用例覆盖工单点名的 5 类场景、以及一套 Python 独立实现用于与 SQL 交叉验证。全部断言跑在真 PostgreSQL 16 上。",
+ "coverage_title": "7 类情形覆盖对照表",
+ "nondeterministic_note": "夹具的 UUID 与时间全部写死（uuid5 从固定命名空间派生），不读系统时钟；物化视图里唯一的时间来源是刷新时传入的 as_of，测试用的三个 as_of 也是常量。同一批数据重跑产出相同的聚合值（已在 Windows 与 Ubuntu 两侧核对）。",
+ "fiction": "执行记录、步骤键、组织与站点 ID 全部虚构；不含任何真实个人信息、企业信息与客户名称。",
+ "rules": [
+  "物化视图 mv_sop_step_sla 的 13 列与工单原文逐字一致。",
+  "归月按 started_at，时区用固定偏移 +08:00（不用 AT TIME ZONE 'Asia/Shanghai'：嵌入式 PostgreSQL 不带 tzdata，会报 time zone not recognized；Asia/Shanghai 自 1991 年起无夏令时，固定偏移等价）。",
+  "净耗时 = finished_at − started_at − 暂停区间并集长度；并集用 range_agg + tstzrange multirange 实现，重叠暂停只扣一次。",
+  "未完成（finished_at 为空）不计算净耗时，记 NULL；只参与超时判定。",
+  "超时判定：已完成看 finished_at > due_at；未完成看 as_of > due_at。",
+  "无 due_at 的记录只统计耗时，不进超时分母；整组无 due_at 时 overdue_rate 为 NULL。",
+  "净耗时 < 0 或 > 30 天记为异常：计入 anomaly_count，且不进 p50 / p90 / max。",
+  "分位数用 percentile_cont（PostgreSQL 内置，线性插值）；max 用 MAX()，同样排除异常值。",
+  "deleted_at 非空的执行记录与暂停记录都不参与统计。",
+  "物化视图定义里不能带运行时参数，所以建单行参数表 sla_refresh_param(as_of)，刷新函数先 upsert 再 REFRESH MATERIALIZED VIEW。",
+  "口径常量集中在 pkg/engine.py，物化视图 SQL 由 pkg/mv_sql.py 用这些常量 format 出来 —— 改常量即改 SQL 行为，变异测试才测得到。",
+  "alembic.ini 保持纯 ASCII：Alembic 用系统 locale（zh-CN Windows 是 GBK）读该文件，写中文注释会让 upgrade 在跑任何迁移前就 UnicodeDecodeError。"
+ ],
+ "deliverables": [
+  [
+   "pkg/engine.py",
+   "口径常量（时区偏移/异常阈值/超时比较符/未完成耗时表达式/rate 分母/是否扣暂停）+ 11 条记录的手算期望"
+  ],
+  [
+   "pkg/mv_sql.py",
+   "物化视图与刷新函数的 SQL 定义（由 engine 常量 format 生成，单一真相源）"
+  ],
+  [
+   "pkg/schema.py",
+   "SQLAlchemy 模型（sop_step_runs / sop_step_pauses / sla_refresh_param）"
+  ],
+  [
+   "pkg/db.py",
+   "真 PostgreSQL 连接与建库/灌数/刷新/读视图（pgserver 内嵌或外部 DSN）"
+  ],
+  [
+   "pkg/pycalc.py",
+   "Python 侧独立实现（不走 SQL），含 percentile_cont 线性插值的等价实现"
+  ],
+  [
+   "pkg/fixtures.py",
+   "11 条虚构执行记录与 3 条暂停记录（确定性，UUID 固定）"
+  ],
+  [
+   "alembic/",
+   "两份迁移：0001 建表、0002 建物化视图与刷新函数；ini 为纯 ASCII"
+  ],
+  [
+   "tests/",
+   "15 个 pytest 用例，覆盖暂停扣除 / 跨月归属 / 无 due_at / 异常值 / as_of 回溯 + 交叉验证"
+  ],
+  [
+   "sql/mv_sop_step_sla.sql",
+   "物化视图 DDL（与代码生成内容逐字一致）"
+  ],
+  [
+   "sql/refresh_function.sql",
+   "刷新函数 DDL"
+  ],
+  [
+   "docs/rules.md",
+   "口径说明（工单未写死处在此定死）"
+  ],
+  [
+   "docs/hand_calc.md",
+   "11 条记录的手算对照表与聚合值推导"
+  ],
+  [
+   "docs/runs.md",
+   "逐条记录说明"
+  ]
+ ],
+ "mutations": [
+  [
+   "M1 异常上限从 30 天改成 7 天",
+   "ANOMALY_MAX_MINUTES = 30 * 24 * 60",
+   "ANOMALY_MAX_MINUTES = 7 * 24 * 60"
+  ],
+  [
+   "M2 归月时区偏移从 8 改成 0",
+   "TZ_OFFSET_HOURS = 8",
+   "TZ_OFFSET_HOURS = 0"
+  ],
+  [
+   "M3 超时判定从严格大于改成大于等于",
+   "OVERDUE_COMPARE = \">\"",
+   "OVERDUE_COMPARE = \">=\""
+  ],
+  [
+   "M4 未完成步骤也用 as_of 算耗时",
+   "UNFINISHED_NET_EXPR = \"NULL\"",
+   "UNFINISHED_NET_EXPR = \"ROUND(EXTRACT(EPOCH FROM ((SELECT as_of FROM p) - r.started_at)) / 60.0)\""
+  ],
+  [
+   "M5 overdue_rate 分母改成全部运行（含无 due 的）",
+   "RATE_DENOMINATOR = \"FILTER (WHERE has_due)\"",
+   "RATE_DENOMINATOR = \"\""
+  ],
+  [
+   "M6 不再扣除暂停区间",
+   "PAUSE_DEDUCT = True",
+   "PAUSE_DEDUCT = False"
+  ],
+  [
+   "M7 异常只判上限（不再判负耗时）",
+   "CHECK_ANOMALY_LOW = True",
+   "CHECK_ANOMALY_LOW = False"
+  ]
+ ],
+ "acs": [
+  [
+   "AC1",
+   "pytest 通过，5 类用例各至少 1 个，断言值与手算一致",
+   "真跑 pytest（子进程，rc 与 passed/failed 都断言），再从 pytest --collect-only 取出用例名，逐类核对工单点名的 5 类场景各有实现；聚合值（step_runs/p50/p90/max/anomaly_count/overdue_runs/overdue_rate）逐项与硬编码手算值比对；另核物化视图 13 列名与工单原文逐字一致",
+   "python tools/verify.py",
+   [
+    "[PASS] V01",
+    "[PASS] V02",
+    "[PASS] V03",
+    "[PASS] V04",
+    "[PASS] V05",
+    "[PASS] V06",
+    "[PASS] V07",
+    "[PASS] V08",
+    "[PASS] V09",
+    "[PASS] V10",
+    "[PASS] V11",
+    "[PASS] V12",
+    "[PASS] V13",
+    "[PASS] V14",
+    "[PASS] V31"
+   ]
+  ],
+  [
+   "AC2",
+   "同一批虚构数据用两个不同 as_of 刷新，overdue_runs 按预期变化（测试中断言）",
+   "对同一批已灌入的数据，用 refresh_mv_sop_step_sla 分别以 as_of=2026-11-10 09:30 与 11:00 刷新两次；断言未完成的 R9（due 10:00）所在分组 overdue_runs 从 0 变 1、overdue_rate 从 0.0 变 0.5；同时断言分位数不随 as_of 变动（未完成步骤不计耗时）；另断言 as_of 早于全部数据时物化视图为空",
+   "python tools/verify.py",
+   [
+    "[PASS] V15",
+    "[PASS] V16",
+    "[PASS] V17",
+    "[PASS] V18",
+    "[PASS] V19",
+    "[PASS] V32"
+   ]
+  ],
+  [
+   "AC3",
+   "异常耗时记录不影响 p50_minutes / p90_minutes，anomaly_count 数值正确",
+   "断言 p50/p90/max 等于排除异常后的手算值；并做反证——用一条不排除异常的 SQL 现算，得到明显不同的 p50/p90，证明「排除」这步真的起了作用；anomaly_count 断言为 2，并从数据里分别数出负耗时 1 条、超 30 天 1 条",
+   "python tools/verify.py",
+   [
+    "[PASS] V20",
+    "[PASS] V21",
+    "[PASS] V22",
+    "[PASS] V23",
+    "[PASS] V33"
+   ]
+  ]
+ ],
+ "deps": [
+  "Python 3.11+（已在 3.11.7 与 3.12.3 实跑）。",
+  "**必需**：`sqlalchemy>=2`、`alembic`、`psycopg2-binary`（或 psycopg 3）。",
+  "**必需**：一个真 PostgreSQL 16。两种接法任选其一：",
+  "  · 设 `SLA3057_DSN`（或 `DATABASE_URL`）指向已有实例，例如 `postgresql://postgres:pw@127.0.0.1:55432/postgres`；",
+  "  · 不设就自动用 `pgserver`（pip 包，随附 PostgreSQL 二进制）起一个内嵌实例，数据目录在临时目录、进程退出即弃。",
+  "Ubuntu 上的实测做法：`docker run -d --name pg3057 -e POSTGRES_PASSWORD=pg3057 -p 55432:5432 postgres:16-alpine` 然后 `export SLA3057_DSN=...`。"
+ ],
+ "third_party": [
+  [
+   "PostgreSQL",
+   "Windows 16.2（pgserver 内嵌）/ Ubuntu 16.16（docker postgres:16-alpine）",
+   "PostgreSQL License"
+  ],
+  [
+   "SQLAlchemy",
+   "2.1.9（两侧同版本）",
+   "MIT"
+  ],
+  [
+   "Alembic",
+   "1.20.1（两侧同版本）",
+   "MIT"
+  ],
+  [
+   "psycopg2-binary",
+   "2.9.13（两侧同版本）",
+   "LGPL with exceptions"
+  ],
+  [
+   "pgserver",
+   "0.1.4（仅 Windows 侧用于起内嵌 PG）",
+   "MIT"
+  ]
+ ],
+ "gates": [
+  "`python tools/verify.py` —— 完整模式：33 条断言全部真跑（含 Alembic upgrade/downgrade、真 SQL 查询）。本单没有可跳过的断言，缺数据库会直接失败而不是静默跳过。",
+  "`python -m pytest tests -v` —— 15 个用例，同样必须连真库。",
+  "`python -m alembic upgrade head` / `downgrade base` —— 可直接在包内独立执行，不依赖 verify。"
+ ]
+}

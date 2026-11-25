@@ -1,0 +1,8 @@
+category_id,category,example_ids
+C01,暂停扣除（单次暂停）,R1
+C02,暂停扣除（重叠暂停取并集）,R3
+C03,跨月归属（按 started_at）,R7 R8 R13
+C04,无 due_at：进耗时、不进超时分母,R2 R4 R10 R14
+C05,异常值：负耗时,R5
+C06,异常值：超 30 天,R6 R12
+C07,未完成步骤（as_of 回溯）与软删除,R9 R11

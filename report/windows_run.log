@@ -1,0 +1,56 @@
+=== 平台: Windows 11 | build 10.0.22631 | Python 3.11.7 ===
+
+=== 0) 数据库与依赖 ===
+PostgreSQL: 16.2
+sqlalchemy 2.1.9 | alembic 1.20.1 | psycopg2 2.9.13
+
+=== 1) SHA256SUMS 逐条复核（47 条）===
+rc=0
+OK: 47  FAIL: 0
+
+=== 2) gen ===
+rc=0
+examples=14 categories=7
+
+=== 3) verify（33 条，全部对真 PostgreSQL）===
+rc=0
+PASS: 33  FAIL: 0
+SUMMARY 33/33 PASS
+[PASS] V01 连的是真 PostgreSQL（不是内存库/模拟），版本 >= 16 PG 16.2，连接方式 pgserver(embedded PostgreSQL)
+[PASS] V02 Alembic 迁移能真跑 upgrade head（不是只检查文件存在） alembic_version=0002 err=
+[PASS] V07 物化视图列与工单原文点名的 13 列逐字一致 实测 ['org_id', 'site_id', 'template_id', 'version_no', 'step_key', 'month', 'step_runs', 'overdue_runs', 'overdue_rate', 'p50_minutes', 'p90_minutes', 'max_minutes', 'anomaly_count']
+[PASS] V11 AC1 S1 组 p50_minutes=72.5（正常样本 40/60/85/99 的线性插值） 实测 72.5
+[PASS] V12 AC1 S1 组 p90_minutes=94.8 实测 94.8
+[PASS] V16 AC2 同一批数据：as_of=11:00 时 S3 组 overdue_runs=1、rate=0.5 overdue=1 rate=0.5
+[PASS] V20 AC3 反证：若不排除异常值，p50/p90 会变成 79.5 / 28860.0，与实测 72.5 / 94.8 明显不同 naive p50=79.5 p90=28860.0 vs 实测 72.5 / 94.8
+[PASS] V24 交叉验证：物化视图（SQL）与 Python 独立实现在 3 个 as_of 下结论完全一致 不一致 无
+
+=== 4) pytest -v ===
+rc=0
+PASSED 条数: 15
+============================= 15 passed in 1.06s ==============================
+
+=== 5) Alembic 独立跑一遍（不经过 verify）===
+upgrade head rc=0 | downgrade base rc=0 | upgrade head rc=0
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001, 建 SOP 步骤执行与暂停表
+INFO  [alembic.runtime.migration] Running upgrade 0001 -> 0002, 建物化视图 mv_sop_step_sla 与刷新函数
+
+=== 6) 物化视图实际内容（直查 SQL）===
+已重建并灌入夹具
+step_key | month | runs | overdue | rate | p50 | p90 | max | anomaly
+S1 | 2026-10 | 6 | 1 | 0.333333 | 72.5 | 94.8 | 99 | 2
+S2 | 2026-10 | 1 | 0 | None | 180.0 | 180.0 | 180 | 0
+S2 | 2026-11 | 1 | 0 | None | 30.0 | 30.0 | 30 | 0
+S3 | 2026-11 | 2 | 1 | 0.5 | 40.0 | 40.0 | 40 | 0
+S4 | 2026-10 | 1 | 0 | None | 21600.0 | 21600.0 | 21600 | 0
+S5 | 2026-11 | 1 | 0 | None | 60.0 | 60.0 | 60 | 0
+S6 | 2026-10 | 1 | 0 | 0.0 | 60.0 | 60.0 | 60 | 0
+
+=== 7) as_of 回溯（不改数据，只改 as_of 刷新）===
+as_of=09:30 -> overdue_runs / rate = 0 / 0.0
+as_of=11:00 -> overdue_runs / rate = 1 / 0.5
+
+=== 8) pii ===
+scanned=44 hits=0
+rc=0
+

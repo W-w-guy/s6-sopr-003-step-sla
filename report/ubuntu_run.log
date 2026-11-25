@@ -1,0 +1,57 @@
+=== 最终交付件复核 — Ubuntu Ubuntu 24.04.5 LTS | Python 3.12.3 | 7.0.0-38-generic ===
+
+=== 0) 数据库与依赖 ===
+PostgreSQL: PostgreSQL 16.16 on x86_64-pc-linux-musl
+sqlalchemy 2.1.9 | alembic 1.20.1 | psycopg2 2.9.13
+
+=== 1) sha256sum -c ===
+rc=0
+OK: 47  FAIL: 0
+
+=== 2) verify（33 条，全部对真 PostgreSQL） ===
+rc=0
+PASS: 33  FAIL: 0
+SUMMARY 33/33 PASS
+[PASS] V01 连的是真 PostgreSQL（不是内存库/模拟），版本 >= 16 PG 16.16，连接方式 env:SLA3057_DSN
+[PASS] V02 Alembic 迁移能真跑 upgrade head（不是只检查文件存在） alembic_version=0002 err=
+[PASS] V07 物化视图列与工单原文点名的 13 列逐字一致 实测 ['org_id', 'site_id', 'template_id', 'version_no', 'step_key', 'month', 'step_runs', 'overdue_runs', 'overdue_rate', 'p50_minutes', 'p90_minutes', 'max_minutes', 'anomaly_count']
+[PASS] V11 AC1 S1 组 p50_minutes=72.5（正常样本 40/60/85/99 的线性插值） 实测 72.5
+[PASS] V12 AC1 S1 组 p90_minutes=94.8 实测 94.8
+[PASS] V16 AC2 同一批数据：as_of=11:00 时 S3 组 overdue_runs=1、rate=0.5 overdue=1 rate=0.5
+[PASS] V20 AC3 反证：若不排除异常值，p50/p90 会变成 79.5 / 28860.0，与实测 72.5 / 94.8 明显不同 naive p50=79.5 p90=28860.0 vs 实测 72.5 / 94.8
+[PASS] V24 交叉验证：物化视图（SQL）与 Python 独立实现在 3 个 as_of 下结论完全一致 不一致 无
+[PASS] V31 15 天耗时（21600 分钟）在 30 天阈值内算正常：p50=21600、anomaly_count=0 S4 组 p50=21600.0 anomaly=0（若阈值改成 7 天，p50 会变 NULL、anomaly 变 1）
+[PASS] V32 R13 按 +08:00 归 2026-11（若时区偏移改成 0 会归到 2026-10） 2026-11 行=True / 2026-10 行=False
+[PASS] V33 finished 恰好等于 due 时不判超时（严格大于）：overdue_runs=0、rate=0.0 S6 组 overdue=0 rate=0.0（改成 >= 会变 1 / 1.0）
+
+=== 3) pytest -v ===
+rc=0
+PASSED: 15
+============================= 15 passed in 26.30s ==============================
+
+=== 4) 物化视图内容（psql 直查，绕过 Python） ===
+ step_key |    m    | step_runs | overdue_runs | overdue_rate | p50_minutes | p90_minutes | max_minutes | anomaly_count 
+----------+---------+-----------+--------------+--------------+-------------+-------------+-------------+---------------
+ S1       | 2026-10 |         6 |            1 |     0.333333 |        72.5 |        94.8 |          99 |             2
+ S2       | 2026-10 |         1 |            0 |              |         180 |         180 |         180 |             0
+ S2       | 2026-11 |         1 |            0 |              |          30 |          30 |          30 |             0
+ S3       | 2026-11 |         2 |            1 |     0.500000 |          40 |          40 |          40 |             0
+ S4       | 2026-10 |         1 |            0 |              |       21600 |       21600 |       21600 |             0
+ S5       | 2026-11 |         1 |            0 |              |          60 |          60 |          60 |             0
+ S6       | 2026-10 |         1 |            0 |     0.000000 |          60 |          60 |          60 |             0
+(7 rows)
+
+
+=== 5) as_of 回溯（数据不动，只改 as_of） ===
+as_of=09:30 → 0 / 0.000000
+as_of=11:00 → 1 / 0.500000
+
+=== 6) ACCEPTANCE 四元组命中 ===
+  AC1 → PASS 15 | MISS 0
+  AC2 → PASS 6 | MISS 0
+  AC3 → PASS 5 | MISS 0
+  汇总 → PASS 0 | MISS 0
+
+=== 7) pii ===
+scanned=44 hits=0
+rc=0
